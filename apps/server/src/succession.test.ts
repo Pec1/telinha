@@ -101,6 +101,17 @@ describe('sucessão de host', () => {
     expect(rooms.store.get(code)!.sharers.has(ana.identity)).toBe(false);
   });
 
+  it('quem foi removido nunca é promovido', async () => {
+    const { api, rooms, host, code, guest, metadata } = await setup();
+    const ana = await guest('Ana');
+    const bia = await guest('Bia');
+    rooms.store.get(code)!.kicked.add(ana.identity); // ainda aparece na listagem por um instante
+    api.disconnect(code, host.identity);
+    rooms.scheduleHostCheck(code);
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(metadata().hostIdentity).toBe(bia.identity);
+  });
+
   it('sala vazia: não faz nada', async () => {
     const { api, rooms, host, code, metadata } = await setup();
     api.disconnect(code, host.identity);

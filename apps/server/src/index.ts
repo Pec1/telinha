@@ -14,6 +14,8 @@ const server = serve({ fetch: app.fetch, port: config.port, hostname: '0.0.0.0' 
 
 function shutdown() {
   server.close(() => process.exit(0));
+  // Conexões keep-alive abertas impediriam o close de terminar.
+  if ('closeAllConnections' in server) server.closeAllConnections();
   setTimeout(() => process.exit(0), 3000).unref();
 }
 process.on('SIGINT', shutdown);

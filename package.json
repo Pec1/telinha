@@ -10,13 +10,16 @@
     "dev": "concurrently -k -n web,server -c cyan,magenta \"pnpm --filter @telinha/web dev\" \"pnpm --filter @telinha/server dev\"",
     "build": "pnpm --filter @telinha/shared build && pnpm --filter @telinha/web build && pnpm --filter @telinha/server build",
     "start": "pnpm --filter @telinha/server start",
-    "typecheck": "pnpm -r typecheck",
+    "typecheck": "pnpm -r typecheck && tsc -p e2e/tsconfig.json",
     "lint": "eslint .",
-    "test": "pnpm -r test"
+    "test": "pnpm -r test",
+    "test:e2e": "playwright test",
+    "test:e2e:install": "playwright install --with-deps chromium"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.63.0",
+    "@types/node": "^26.6.2",
     "concurrently": "^10.0.5",
     "eslint": "^10.11.0",
     "eslint-plugin-react-hooks": "^7.1.1",
