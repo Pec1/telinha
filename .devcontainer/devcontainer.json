@@ -1,0 +1,21 @@
+{
+  "name": "Telinha",
+  "image": "mcr.microsoft.com/devcontainers/base:bookworm",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "lts"
+    }
+  },
+  "onCreateCommand": "npm install -g corepack@latest && corepack enable",
+  "postCreateCommand": "pnpm install",
+  "forwardPorts": [5173, 8787],
+  "portsAttributes": {
+    "5173": { "label": "Web", "onAutoForward": "notify" },
+    "8787": { "label": "API", "onAutoForward": "silent" }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": ["dbaeumer.vscode-eslint", "bradlc.vscode-tailwindcss"]
+    }
+  }
+}
