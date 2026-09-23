@@ -19,7 +19,8 @@ import { useToast } from '../../context/toast';
 import { Logo, Spinner } from '../ui';
 import { ControlBar } from './ControlBar';
 import type { EndReason } from './EndScreen';
-import { Sidebar } from './Sidebar';
+import { ChatProvider } from './ChatProvider';
+import { Sidebar, type SidebarTab } from './Sidebar';
 import { Stage } from './Stage';
 
 export interface Connection {
@@ -95,7 +96,9 @@ export function RoomView({ code, session, connection, onEnded, onLeave }: Props)
       className="flex h-full flex-col"
     >
       <RoomSessionContext.Provider value={session}>
-        <RoomLayout code={code} onLeave={leave} />
+        <ChatProvider>
+          <RoomLayout code={code} onLeave={leave} />
+        </ChatProvider>
       </RoomSessionContext.Provider>
       <RoomAudioRenderer />
     </LiveKitRoom>
@@ -114,6 +117,19 @@ function RoomLayout({ code, onLeave }: { code: string; onLeave: () => void }) {
   const screenTracks = useScreenTracks();
   const focused = screenTracks[0];
   const [sidebarOpen, setSidebarOpen] = useState(() => window.matchMedia?.('(min-width: 768px)').matches ?? true);
+  const [sidebarTab, setSidebarTab] = useState<SidebarTab>('participants');
+
+  // Botões da barra: abrem o painel na aba escolhida; clicar de novo na aba aberta fecha.
+  const toggleSidebarTab = useCallback(
+    (tab: SidebarTab) => {
+      if (sidebarOpen && sidebarTab === tab) setSidebarOpen(false);
+      else {
+        setSidebarTab(tab);
+        setSidebarOpen(true);
+      }
+    },
+    [sidebarOpen, sidebarTab],
+  );
 
   const stageRef = useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -231,7 +247,13 @@ function RoomLayout({ code, onLeave }: { code: string; onLeave: () => void }) {
             <Stage focused={focused} />
           )}
         </div>
-        <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+        <Sidebar
+          open={sidebarOpen}
+          tab={sidebarTab}
+          onTabChange={setSidebarTab}
+          onClose={() => setSidebarOpen(false)}
+          participantCount={participants.length}
+        />
       </div>
 
       <ControlBar
@@ -243,7 +265,8 @@ function RoomLayout({ code, onLeave }: { code: string; onLeave: () => void }) {
         isFullscreen={isFullscreen}
         onToggleFullscreen={toggleFullscreen}
         sidebarOpen={sidebarOpen}
-        onToggleSidebar={() => setSidebarOpen((o) => !o)}
+        sidebarTab={sidebarTab}
+        onToggleSidebarTab={toggleSidebarTab}
         participantCount={participants.length}
         onLeave={onLeave}
       />
