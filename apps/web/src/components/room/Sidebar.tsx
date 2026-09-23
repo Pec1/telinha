@@ -42,7 +42,7 @@ export function Sidebar({
       id="room-sidebar"
       aria-label="Painel lateral"
       hidden={!open}
-      className="absolute inset-y-0 right-0 z-20 flex w-full max-w-xs flex-col border-l border-border bg-surface shadow-2xl shadow-black/50 md:static md:z-auto md:shadow-none"
+      className="absolute inset-y-0 right-0 z-20 flex w-full flex-col md:max-w-xs border-l border-border bg-surface shadow-2xl shadow-black/50 md:static md:z-auto md:shadow-none"
     >
       <div className="flex items-center gap-2 border-b border-border px-2 py-2">
         <div role="tablist" aria-label="Painel lateral" className="flex flex-1 gap-1">

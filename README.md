@@ -32,6 +32,8 @@ packages/shared  Schemas Zod e tipos de request/response usados pelos dois apps
 
 Erros sempre no formato `{ "error": { "code": "...", "message": "..." } }`.
 
+**Rate limit por IP** (em memória; o IP vem do primeiro item do `X-Forwarded-For`, que o Render preenche com o cliente real): criar sala 5 a cada 10 min; join, rejoin, GET da sala e host-check 30/min; ações de host 60/min. Acima disso: `429 RATE_LIMITED` com `Retry-After`.
+
 ### Modos de transmissão
 
 | Modo | Resolução | FPS | Bitrate máx. | contentHint | degradationPreference |
@@ -78,6 +80,8 @@ O `render.yaml` (Blueprint) define um único web service Node no plano free: o s
 3. Aplique o Blueprint. O build roda `corepack enable && pnpm install --frozen-lockfile && pnpm build`, o start roda `pnpm start` e o health check é `/health`.
 4. No LiveKit Cloud, em **Settings → Webhooks**, cadastre `https://<app>.onrender.com/api/livekit/webhook` usando a mesma API key configurada no Render.
 
+O plano free hiberna após 15 min sem requisições. Como a mídia não passa pelo server, enquanto alguém está numa sala o frontend chama `/health` a cada 5 min para mantê-lo acordado.
+
 ## Variáveis de ambiente
 
 | Variável | Padrão | Descrição |
@@ -91,5 +95,6 @@ O `render.yaml` (Blueprint) define um único web service Node no plano free: o s
 | `MAX_SHARERS` | `4` | Pessoas com permissão de tela por sala, contando o host |
 | `EMPTY_TIMEOUT_SECONDS` | `300` | Sala vazia fecha depois desse tempo |
 | `HOST_GRACE_SECONDS` | `20` | Carência antes de promover um novo host quando o host sai |
+| `RATE_LIMIT` | `on` | `off` desliga o rate limit (só para testes automatizados) |
 
 Veja `.env.example`. Nunca faça commit de `.env`.

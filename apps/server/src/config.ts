@@ -14,6 +14,8 @@ const envSchema = z.object({
   MAX_SHARERS: intFromEnv(4, 1),
   EMPTY_TIMEOUT_SECONDS: intFromEnv(300, 10),
   HOST_GRACE_SECONDS: intFromEnv(20, 0),
+  // Só para testes automatizados: RATE_LIMIT=off desliga os limites por IP.
+  RATE_LIMIT: z.enum(['on', 'off']).default('on'),
 });
 
 export interface Config {
@@ -25,6 +27,7 @@ export interface Config {
   maxSharers: number;
   emptyTimeoutSeconds: number;
   hostGraceSeconds: number;
+  rateLimitEnabled: boolean;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -45,5 +48,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     maxSharers: e.MAX_SHARERS,
     emptyTimeoutSeconds: e.EMPTY_TIMEOUT_SECONDS,
     hostGraceSeconds: e.HOST_GRACE_SECONDS,
+    rateLimitEnabled: e.RATE_LIMIT === 'on',
   };
 }

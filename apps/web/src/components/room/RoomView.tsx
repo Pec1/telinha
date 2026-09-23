@@ -8,16 +8,19 @@ import { ConnectionState, DisconnectReason, Room } from 'livekit-client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { RoomSessionContext, useRoomSession } from '../../context/RoomSession';
 import { useCanShare } from '../../hooks/useCanShare';
+import { useHeartbeat } from '../../hooks/useHeartbeat';
 import { useHostIdentity, useIsHost } from '../../hooks/useIsHost';
 import { useScreenTracks } from '../../hooks/useScreenTracks';
 import { useShareMode } from '../../hooks/useShareMode';
 import { apiRequest } from '../../lib/api';
 import { pickFocusedIdentity } from '../../lib/focus';
-import { SHARE_PRESETS, isCaptureCancelled, type ShareMode } from '../../lib/media';
+import { SHARE_PRESETS, canCaptureScreen, isCaptureCancelled, type ShareMode } from '../../lib/media';
 import { startScreenShare, stopScreenShare, switchScreenShareMode } from '../../lib/screenShare';
 import type { StoredSession } from '../../lib/session';
 import { useToast } from '../../context/toast';
 import { Logo, Spinner } from '../ui';
+import { ConnectionQualityBars } from './ConnectionQualityBars';
+import { CopyCodeButton } from './CopyCodeButton';
 import { ControlBar } from './ControlBar';
 import type { EndReason } from './EndScreen';
 import { ChatProvider } from './ChatProvider';
@@ -150,6 +153,19 @@ function RoomLayout({ code, onLeave }: { code: string; onLeave: () => void }) {
 
   // Avisos ao ganhar/perder permissão (o estado vem do LiveKit; ignoramos o valor inicial).
   const connected = connectionState === ConnectionState.Connected;
+  const reconnecting =
+    connectionState === ConnectionState.Reconnecting || connectionState === ConnectionState.SignalReconnecting;
+  useHeartbeat(connected || reconnecting);
+
+  // Aviso quando a conexão volta depois de uma queda.
+  const wasReconnecting = useRef(false);
+  useEffect(() => {
+    if (reconnecting) wasReconnecting.current = true;
+    else if (connected && wasReconnecting.current) {
+      wasReconnecting.current = false;
+      toast.show('Conexão restabelecida.', 'success');
+    }
+  }, [reconnecting, connected, toast]);
   const prevCanShare = useRef<boolean | null>(null);
   useEffect(() => {
     if (!connected) return;
@@ -257,17 +273,30 @@ function RoomLayout({ code, onLeave }: { code: string; onLeave: () => void }) {
   }, [toggleFullscreen]);
 
   const connecting = connectionState === ConnectionState.Connecting;
-  const reconnecting =
-    connectionState === ConnectionState.Reconnecting || connectionState === ConnectionState.SignalReconnecting;
 
   return (
     <>
-      <header className="flex items-center justify-between gap-3 border-b border-border bg-surface px-4 py-2.5">
-        <Logo className="text-lg" />
-        <p className="text-sm text-muted">
-          Sala <span className="font-mono font-semibold tracking-widest text-fg">{code}</span>
-        </p>
+      <header className="flex items-center justify-between gap-3 border-b border-border bg-surface px-4 py-2">
+        <div className="flex items-center gap-3">
+          <Logo className="text-lg" />
+          <h1 className="sr-only">Sala {code}</h1>
+          {isHost && (
+            <span className="hidden rounded-full border border-amber-400/40 bg-amber-400/10 px-2 py-0.5 text-xs text-amber-300 sm:inline">
+              Você é o host
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-3">
+          <CopyCodeButton code={code} />
+          <ConnectionQualityBars participant={localParticipant} />
+        </div>
       </header>
+
+      {canShare && !canCaptureScreen() && (
+        <div role="note" className="bg-surface-2 px-4 py-2 text-center text-sm text-muted">
+          Este navegador não permite compartilhar a tela (comum em celulares). Você pode assistir normalmente.
+        </div>
+      )}
 
       {reconnecting && (
         <div role="status" className="flex items-center justify-center gap-2 bg-amber-500/15 px-4 py-2 text-sm text-amber-300">
@@ -275,7 +304,7 @@ function RoomLayout({ code, onLeave }: { code: string; onLeave: () => void }) {
         </div>
       )}
 
-      <div className="relative flex min-h-0 flex-1">
+      <main className="relative flex min-h-0 flex-1">
         <div ref={stageRef} className="relative min-w-0 flex-1 bg-black">
           {connecting ? (
             <div className="flex h-full items-center justify-center gap-3 text-muted">
@@ -292,7 +321,7 @@ function RoomLayout({ code, onLeave }: { code: string; onLeave: () => void }) {
           onClose={() => setSidebarOpen(false)}
           participantCount={participants.length}
         />
-      </div>
+      </main>
 
       <ControlBar
         code={code}

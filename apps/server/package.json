@@ -14,6 +14,7 @@
     "@hono/node-server": "^2.1.1",
     "@telinha/shared": "workspace:*",
     "hono": "^4.13.8",
+    "hono-rate-limiter": "^0.5.4",
     "livekit-server-sdk": "^2.19.1",
     "nanoid": "^6.0.1",
     "zod": "^4.6.5"

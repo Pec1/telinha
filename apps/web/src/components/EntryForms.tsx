@@ -7,6 +7,7 @@ import {
 } from '@telinha/shared';
 import { useState, type FormEvent } from 'react';
 import { ApiRequestError, apiRequest } from '../lib/api';
+import { canCaptureScreen } from '../lib/media';
 import { Button, Spinner, TextField } from './ui';
 
 export interface EnteredRoom {
@@ -68,6 +69,12 @@ export function CreateRoomForm({ onEntered }: { onEntered: (room: EnteredRoom) =
       <p className="text-xs text-muted">
         Você será o host: só você compartilha a tela até dar permissão a alguém.
       </p>
+      {!canCaptureScreen() && (
+        <p role="note" className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+          Este navegador não permite compartilhar a tela (comum em celulares). Você ainda pode criar a sala,
+          assistir e liberar a tela para outras pessoas.
+        </p>
+      )}
     </form>
   );
 }

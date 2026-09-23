@@ -29,10 +29,12 @@ export function HomePage() {
   }
 
   return (
-    <main className="flex min-h-full flex-col items-center justify-center px-4 py-12">
+    <main className="flex min-h-full flex-col items-center justify-center bg-[radial-gradient(ellipse_at_top,rgba(109,93,252,0.18),transparent_60%)] px-4 py-12">
       <div className="w-full max-w-md">
         <header className="mb-8 text-center">
-          <Logo className="text-3xl" />
+          <h1>
+            <Logo className="text-3xl" />
+          </h1>
           <p className="mt-3 text-muted">Compartilhe sua tela em 1080p. Sem cadastro, é só criar e mandar o link.</p>
         </header>
 
@@ -69,6 +71,18 @@ export function HomePage() {
             )}
           </div>
         </section>
+
+        <ul className="mt-8 grid grid-cols-3 gap-3 text-center text-xs text-muted">
+          <li className="rounded-lg border border-border/60 bg-surface/50 px-2 py-3">
+            <strong className="block text-sm text-fg">1080p</strong>até 60 fps
+          </li>
+          <li className="rounded-lg border border-border/60 bg-surface/50 px-2 py-3">
+            <strong className="block text-sm text-fg">Sem conta</strong>só um apelido
+          </li>
+          <li className="rounded-lg border border-border/60 bg-surface/50 px-2 py-3">
+            <strong className="block text-sm text-fg">Várias telas</strong>ao mesmo tempo
+          </li>
+        </ul>
       </div>
     </main>
   );

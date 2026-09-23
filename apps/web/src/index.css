@@ -27,6 +27,15 @@
     @apply bg-bg text-fg font-sans antialiased;
   }
 
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
   /* Foco visível e consistente em todos os elementos interativos. */
   :focus-visible {
     @apply outline-2 outline-offset-2 outline-accent;
