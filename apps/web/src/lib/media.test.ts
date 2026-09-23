@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { isCaptureCancelled, preferredVideoCodec, screenCaptureOptions, screenPublishOptions } from './media';
+import {
+  displayMediaOptions,
+  isCaptureCancelled,
+  preferredVideoCodec,
+  screenPublishOptions,
+  screenVideoConstraints,
+} from './media';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -20,31 +26,45 @@ describe('codec', () => {
   });
 });
 
-describe('presets', () => {
-  it('Nítido: 1080p30, 4 Mbps, detail, maintain-resolution, sem simulcast', () => {
+describe('modos', () => {
+  it('Nítido: 1080p30, 6 Mbps, detail, balanced, sem simulcast', () => {
     stubCodecs(['video/H264']);
-    expect(screenCaptureOptions('sharp')).toMatchObject({
-      audio: true,
-      resolution: { width: 1920, height: 1080, frameRate: 30 },
-      contentHint: 'detail',
+    expect(screenVideoConstraints('sharp')).toEqual({
+      width: { max: 1920 },
+      height: { max: 1080 },
+      frameRate: { ideal: 30, max: 30 },
     });
     expect(screenPublishOptions('sharp')).toMatchObject({
       videoCodec: 'h264',
       simulcast: false,
-      screenShareEncoding: { maxBitrate: 4_000_000, maxFramerate: 30 },
-      degradationPreference: 'maintain-resolution',
-    });
-  });
-  it('Fluido: 1080p60, 8 Mbps, motion, balanced', () => {
-    stubCodecs(['video/H264']);
-    expect(screenCaptureOptions('smooth')).toMatchObject({
-      resolution: { width: 1920, height: 1080, frameRate: 60 },
-      contentHint: 'motion',
-    });
-    expect(screenPublishOptions('smooth')).toMatchObject({
-      screenShareEncoding: { maxBitrate: 8_000_000, maxFramerate: 60 },
+      screenShareEncoding: { maxBitrate: 6_000_000, maxFramerate: 30 },
       degradationPreference: 'balanced',
     });
+  });
+
+  it('Fluido: 1080p60, 10 Mbps, maintain-framerate', () => {
+    expect(screenVideoConstraints('smooth')).toMatchObject({ width: { max: 1920 }, frameRate: { ideal: 60 } });
+    expect(screenPublishOptions('smooth')).toMatchObject({
+      simulcast: false,
+      screenShareEncoding: { maxBitrate: 10_000_000, maxFramerate: 60 },
+      degradationPreference: 'maintain-framerate',
+    });
+  });
+
+  it('Ultra: resolução nativa (sem limite), 60 fps, 15 Mbps, balanced', () => {
+    const c = screenVideoConstraints('ultra');
+    expect(c).not.toHaveProperty('width');
+    expect(c).not.toHaveProperty('height');
+    expect(c.frameRate).toEqual({ ideal: 60, max: 60 });
+    expect(screenPublishOptions('ultra')).toMatchObject({
+      simulcast: false,
+      screenShareEncoding: { maxBitrate: 15_000_000, maxFramerate: 60 },
+      degradationPreference: 'balanced',
+    });
+  });
+
+  it('pede áudio da tela opcional', () => {
+    expect(displayMediaOptions('sharp')).toMatchObject({ audio: true, systemAudio: 'include' });
   });
 });
 

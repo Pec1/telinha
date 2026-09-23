@@ -124,8 +124,19 @@ function RoomGate({ code }: { code: string }) {
           <Spinner label="Carregando sala" /> Carregando sala…
         </main>
       );
-    case 'room':
-      return <RoomView code={code} connection={phase.connection} onEnded={handleEnded} onLeave={handleLeave} />;
+    case 'room': {
+      const session = loadSession(code);
+      if (!session) return <EndScreen reason="error" onRetry={retry} />;
+      return (
+        <RoomView
+          code={code}
+          session={session}
+          connection={phase.connection}
+          onEnded={handleEnded}
+          onLeave={handleLeave}
+        />
+      );
+    }
     case 'ended':
       return (
         <EndScreen

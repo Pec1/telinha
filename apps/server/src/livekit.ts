@@ -83,3 +83,10 @@ export async function createToken(
 export function serializeMetadata(meta: RoomMetadata): string {
   return JSON.stringify(meta);
 }
+
+/** Erro "não encontrado" vindo da API do LiveKit (TwirpError com status 404). */
+export function isNotFoundError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const e = err as { status?: unknown; code?: unknown };
+  return e.status === 404 || e.code === 'not_found';
+}

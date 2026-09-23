@@ -22,10 +22,22 @@ packages/shared  Schemas Zod e tipos de request/response usados pelos dois apps
 | POST | `/api/rooms` | Cria sala `{nickname}` → `201 {code, token, url, identity, name, sessionKey}` |
 | GET | `/api/rooms/:code` | `{exists, participants, full}` |
 | POST | `/api/rooms/:code/join` | Entra `{nickname}` → `{token, url, identity, name, sessionKey}` |
-| POST | `/api/rooms/:code/rejoin` | Volta `{identity, name}` + sessionKey → `{token, url}` |
+| POST | `/api/rooms/:code/rejoin` | Volta `{identity, name}` + sessionKey → `{token, url}` (403 se foi removido) |
+| POST | `/api/rooms/:code/permissions` | Host concede/revoga tela `{identity, targetIdentity, canShare}` → 204 (409 `SCREEN_LIMIT`) |
+| POST | `/api/rooms/:code/kick` | Host remove alguém `{identity, targetIdentity}` → 204 |
 | GET | `/health` | `{ok: true}` |
 
 Erros sempre no formato `{ "error": { "code": "...", "message": "..." } }`.
+
+### Modos de transmissão
+
+| Modo | Resolução | FPS | Bitrate máx. | contentHint | degradationPreference |
+| --- | --- | --- | --- | --- | --- |
+| Nítido (padrão) | até 1920×1080 | 30 | 6 Mbps | `detail` | `balanced` |
+| Fluido | até 1920×1080 | 60 | 10 Mbps | `motion` | `maintain-framerate` |
+| Ultra | nativa da tela | 60 | 15 Mbps | `motion` | `balanced` |
+
+H.264 quando o navegador suporta publicar (mais chance de encoder por hardware), senão VP8; simulcast desligado. Como a tela é publicada em uma única camada, quem assiste recebe sempre a resolução cheia, independente do tamanho da janela. O modo Ultra exige upload alto e a UI avisa isso.
 
 ## Rodando no Codespaces
 

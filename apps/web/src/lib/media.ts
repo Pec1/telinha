@@ -1,38 +1,55 @@
-import type { ScreenShareCaptureOptions, TrackPublishOptions, VideoCodec } from 'livekit-client';
+import type { TrackPublishOptions, VideoCodec } from 'livekit-client';
 
-export type ShareMode = 'sharp' | 'smooth';
+export type ShareMode = 'sharp' | 'smooth' | 'ultra';
+
+export const SHARE_MODES: ShareMode[] = ['sharp', 'smooth', 'ultra'];
 
 interface SharePreset {
   label: string;
+  /** Resumo curto para o seletor. */
+  short: string;
   description: string;
-  width: number;
-  height: number;
+  /** Limite de resolução; null = resolução nativa da tela. */
+  maxResolution: { width: number; height: number } | null;
   frameRate: number;
   maxBitrate: number;
   contentHint: 'detail' | 'motion';
   degradationPreference: RTCDegradationPreference;
+  /** Aviso exibido na UI ao escolher o modo. */
+  warning?: string;
 }
 
 export const SHARE_PRESETS: Record<ShareMode, SharePreset> = {
   sharp: {
     label: 'Nítido',
-    description: '1080p · 30 fps — ideal para texto, código e slides',
-    width: 1920,
-    height: 1080,
+    short: '1080p · 30 fps',
+    description: '1080p · 30 fps · até 6 Mbps. Ideal para texto, código e slides.',
+    maxResolution: { width: 1920, height: 1080 },
     frameRate: 30,
-    maxBitrate: 4_000_000,
+    maxBitrate: 6_000_000,
     contentHint: 'detail',
-    degradationPreference: 'maintain-resolution',
+    degradationPreference: 'balanced',
   },
   smooth: {
     label: 'Fluido',
-    description: '1080p · 60 fps — ideal para vídeos e jogos',
-    width: 1920,
-    height: 1080,
+    short: '1080p · 60 fps',
+    description: '1080p · 60 fps · até 10 Mbps. Ideal para vídeos e jogos.',
+    maxResolution: { width: 1920, height: 1080 },
     frameRate: 60,
-    maxBitrate: 8_000_000,
+    maxBitrate: 10_000_000,
+    contentHint: 'motion',
+    degradationPreference: 'maintain-framerate',
+  },
+  ultra: {
+    label: 'Ultra',
+    short: 'nativa · 60 fps',
+    description: 'Resolução nativa da tela · 60 fps · até 15 Mbps.',
+    maxResolution: null,
+    frameRate: 60,
+    maxBitrate: 15_000_000,
     contentHint: 'motion',
     degradationPreference: 'balanced',
+    warning: 'Exige upload alto (cerca de 15 Mbps). Se a imagem travar, use Fluido ou Nítido.',
   },
 };
 
@@ -46,17 +63,28 @@ export function preferredVideoCodec(): VideoCodec {
   }
 }
 
-export function screenCaptureOptions(mode: ShareMode): ScreenShareCaptureOptions {
+/** Restrições de vídeo da captura. Sem width/height no Ultra: o navegador entrega a resolução nativa. */
+export function screenVideoConstraints(mode: ShareMode): MediaTrackConstraints {
   const p = SHARE_PRESETS[mode];
   return {
+    frameRate: { ideal: p.frameRate, max: p.frameRate },
+    ...(p.maxResolution && {
+      width: { max: p.maxResolution.width },
+      height: { max: p.maxResolution.height },
+    }),
+  };
+}
+
+/** Opções do getDisplayMedia (inclui campos ainda não tipados no lib.dom). */
+export function displayMediaOptions(mode: ShareMode): DisplayMediaStreamOptions {
+  return {
+    video: screenVideoConstraints(mode),
     // Oferece a opção de áudio no seletor; se a pessoa não marcar, segue só com vídeo.
     audio: true,
     systemAudio: 'include',
-    resolution: { width: p.width, height: p.height, frameRate: p.frameRate },
-    contentHint: p.contentHint,
     selfBrowserSurface: 'exclude',
     surfaceSwitching: 'include',
-  };
+  } as DisplayMediaStreamOptions;
 }
 
 export function screenPublishOptions(mode: ShareMode): TrackPublishOptions {
@@ -64,6 +92,7 @@ export function screenPublishOptions(mode: ShareMode): TrackPublishOptions {
   return {
     videoCodec: preferredVideoCodec(),
     backupCodec: false,
+    // Uma única camada: o SFU não tem versão reduzida para enviar a ninguém.
     simulcast: false,
     screenShareEncoding: { maxBitrate: p.maxBitrate, maxFramerate: p.frameRate },
     degradationPreference: p.degradationPreference,

@@ -1,13 +1,25 @@
-import { LiveKitRoom, RoomAudioRenderer, useConnectionState, useLocalParticipant } from '@livekit/components-react';
+import {
+  LiveKitRoom,
+  RoomAudioRenderer,
+  useConnectionState,
+  useLocalParticipant,
+  useParticipants,
+} from '@livekit/components-react';
 import { ConnectionState, DisconnectReason, Room } from 'livekit-client';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { RoomSessionContext } from '../../context/RoomSession';
 import { useCanShare } from '../../hooks/useCanShare';
+import { useIsHost } from '../../hooks/useIsHost';
 import { useScreenTracks } from '../../hooks/useScreenTracks';
 import { useShareMode } from '../../hooks/useShareMode';
-import { isCaptureCancelled, screenCaptureOptions, screenPublishOptions } from '../../lib/media';
+import { SHARE_PRESETS, isCaptureCancelled, type ShareMode } from '../../lib/media';
+import { startScreenShare, stopScreenShare, switchScreenShareMode } from '../../lib/screenShare';
+import type { StoredSession } from '../../lib/session';
+import { useToast } from '../../context/toast';
 import { Logo, Spinner } from '../ui';
 import { ControlBar } from './ControlBar';
 import type { EndReason } from './EndScreen';
+import { Sidebar } from './Sidebar';
 import { Stage } from './Stage';
 
 export interface Connection {
@@ -17,6 +29,7 @@ export interface Connection {
 
 interface Props {
   code: string;
+  session: StoredSession;
   connection: Connection;
   onEnded: (reason: EndReason, detail?: string) => void;
   onLeave: () => void;
@@ -38,7 +51,7 @@ function endReasonFor(reason: DisconnectReason | undefined): EndReason | null {
   }
 }
 
-export function RoomView({ code, connection, onEnded, onLeave }: Props) {
+export function RoomView({ code, session, connection, onEnded, onLeave }: Props) {
   const [room] = useState(
     () =>
       new Room({
@@ -81,7 +94,9 @@ export function RoomView({ code, connection, onEnded, onLeave }: Props) {
       onError={handleError}
       className="flex h-full flex-col"
     >
-      <RoomLayout code={code} onLeave={leave} />
+      <RoomSessionContext.Provider value={session}>
+        <RoomLayout code={code} onLeave={leave} />
+      </RoomSessionContext.Provider>
       <RoomAudioRenderer />
     </LiveKitRoom>
   );
@@ -90,12 +105,15 @@ export function RoomView({ code, connection, onEnded, onLeave }: Props) {
 function RoomLayout({ code, onLeave }: { code: string; onLeave: () => void }) {
   const connectionState = useConnectionState();
   const canShare = useCanShare();
+  const isHost = useIsHost();
+  const toast = useToast();
+  const participants = useParticipants();
   const { localParticipant, isScreenShareEnabled } = useLocalParticipant();
-  const [mode] = useShareMode();
+  const [mode, setMode] = useShareMode();
   const [busy, setBusy] = useState(false);
-  const [shareError, setShareError] = useState<string | null>(null);
   const screenTracks = useScreenTracks();
   const focused = screenTracks[0];
+  const [sidebarOpen, setSidebarOpen] = useState(() => window.matchMedia?.('(min-width: 768px)').matches ?? true);
 
   const stageRef = useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -103,28 +121,60 @@ function RoomLayout({ code, onLeave }: { code: string; onLeave: () => void }) {
   // Perdeu a permissão enquanto transmitia: encerra a transmissão localmente.
   useEffect(() => {
     if (!canShare && isScreenShareEnabled) {
-      void localParticipant.setScreenShareEnabled(false);
+      void stopScreenShare(localParticipant);
     }
   }, [canShare, isScreenShareEnabled, localParticipant]);
 
+  // Avisos ao ganhar/perder permissão (o estado vem do LiveKit; ignoramos o valor inicial).
+  const connected = connectionState === ConnectionState.Connected;
+  const prevCanShare = useRef<boolean | null>(null);
+  useEffect(() => {
+    if (!connected) return;
+    const prev = prevCanShare.current;
+    prevCanShare.current = canShare;
+    if (prev === null || prev === canShare || isHost) return;
+    if (canShare) toast.show('O host liberou: agora você pode compartilhar a tela.', 'success');
+    else toast.show('O host removeu sua permissão de compartilhar a tela.', 'info');
+  }, [canShare, connected, isHost, toast]);
+
+  const reportShareError = useCallback(
+    (err: unknown) => {
+      if (isCaptureCancelled(err)) return;
+      console.error('[tela]', err);
+      toast.show('Não foi possível compartilhar a tela.', 'error');
+    },
+    [toast],
+  );
+
   const toggleShare = useCallback(async () => {
-    setShareError(null);
     setBusy(true);
     try {
-      if (localParticipant.isScreenShareEnabled) {
-        await localParticipant.setScreenShareEnabled(false);
-      } else {
-        await localParticipant.setScreenShareEnabled(true, screenCaptureOptions(mode), screenPublishOptions(mode));
-      }
+      if (localParticipant.isScreenShareEnabled) await stopScreenShare(localParticipant);
+      else await startScreenShare(localParticipant, mode);
     } catch (err) {
-      if (!isCaptureCancelled(err)) {
-        console.error('[tela]', err);
-        setShareError('Não foi possível compartilhar a tela.');
-      }
+      reportShareError(err);
     } finally {
       setBusy(false);
     }
-  }, [localParticipant, mode]);
+  }, [localParticipant, mode, reportShareError]);
+
+  // Trocar de modo durante a transmissão republica a tela com as novas configurações.
+  const changeMode = useCallback(
+    async (next: ShareMode) => {
+      setMode(next);
+      if (!localParticipant.isScreenShareEnabled) return;
+      setBusy(true);
+      try {
+        await switchScreenShareMode(localParticipant, next);
+        toast.show(`Modo ${SHARE_PRESETS[next].label} aplicado.`, 'success');
+      } catch (err) {
+        reportShareError(err);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [localParticipant, setMode, toast, reportShareError],
+  );
 
   const toggleFullscreen = useCallback(() => {
     if (document.fullscreenElement) void document.exitFullscreen();
@@ -170,28 +220,31 @@ function RoomLayout({ code, onLeave }: { code: string; onLeave: () => void }) {
           <Spinner label="Reconectando" /> Conexão instável, reconectando…
         </div>
       )}
-      {shareError && (
-        <div role="alert" className="bg-danger/15 px-4 py-2 text-center text-sm text-danger">
-          {shareError}
-        </div>
-      )}
 
-      <div ref={stageRef} className="relative min-h-0 flex-1 bg-black">
-        {connecting ? (
-          <div className="flex h-full items-center justify-center gap-3 text-muted">
-            <Spinner label="Conectando" /> Conectando à sala…
-          </div>
-        ) : (
-          <Stage focused={focused} />
-        )}
+      <div className="relative flex min-h-0 flex-1">
+        <div ref={stageRef} className="relative min-w-0 flex-1 bg-black">
+          {connecting ? (
+            <div className="flex h-full items-center justify-center gap-3 text-muted">
+              <Spinner label="Conectando" /> Conectando à sala…
+            </div>
+          ) : (
+            <Stage focused={focused} />
+          )}
+        </div>
+        <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       </div>
 
       <ControlBar
         code={code}
         busy={busy}
+        mode={mode}
+        onModeChange={changeMode}
         onToggleShare={toggleShare}
         isFullscreen={isFullscreen}
         onToggleFullscreen={toggleFullscreen}
+        sidebarOpen={sidebarOpen}
+        onToggleSidebar={() => setSidebarOpen((o) => !o)}
+        participantCount={participants.length}
         onLeave={onLeave}
       />
     </>

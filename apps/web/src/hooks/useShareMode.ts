@@ -1,11 +1,12 @@
 import { useCallback, useState } from 'react';
-import type { ShareMode } from '../lib/media';
+import { SHARE_MODES, type ShareMode } from '../lib/media';
 
 const KEY = 'telinha.shareMode';
 
 function readMode(): ShareMode {
   try {
-    return localStorage.getItem(KEY) === 'smooth' ? 'smooth' : 'sharp';
+    const stored = localStorage.getItem(KEY);
+    return SHARE_MODES.includes(stored as ShareMode) ? (stored as ShareMode) : 'sharp';
   } catch {
     return 'sharp';
   }
