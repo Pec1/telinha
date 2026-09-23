@@ -1,17 +1,18 @@
 import {
   LiveKitRoom,
-  RoomAudioRenderer,
   useConnectionState,
   useLocalParticipant,
   useParticipants,
 } from '@livekit/components-react';
 import { ConnectionState, DisconnectReason, Room } from 'livekit-client';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { RoomSessionContext } from '../../context/RoomSession';
+import { RoomSessionContext, useRoomSession } from '../../context/RoomSession';
 import { useCanShare } from '../../hooks/useCanShare';
-import { useIsHost } from '../../hooks/useIsHost';
+import { useHostIdentity, useIsHost } from '../../hooks/useIsHost';
 import { useScreenTracks } from '../../hooks/useScreenTracks';
 import { useShareMode } from '../../hooks/useShareMode';
+import { apiRequest } from '../../lib/api';
+import { pickFocusedIdentity } from '../../lib/focus';
 import { SHARE_PRESETS, isCaptureCancelled, type ShareMode } from '../../lib/media';
 import { startScreenShare, stopScreenShare, switchScreenShareMode } from '../../lib/screenShare';
 import type { StoredSession } from '../../lib/session';
@@ -100,7 +101,6 @@ export function RoomView({ code, session, connection, onEnded, onLeave }: Props)
           <RoomLayout code={code} onLeave={leave} />
         </ChatProvider>
       </RoomSessionContext.Provider>
-      <RoomAudioRenderer />
     </LiveKitRoom>
   );
 }
@@ -115,7 +115,14 @@ function RoomLayout({ code, onLeave }: { code: string; onLeave: () => void }) {
   const [mode, setMode] = useShareMode();
   const [busy, setBusy] = useState(false);
   const screenTracks = useScreenTracks();
-  const focused = screenTracks[0];
+  const [selectedScreen, setSelectedScreen] = useState<string | null>(null);
+  const focusedIdentity = pickFocusedIdentity(
+    screenTracks.map((t) => ({ identity: t.participant.identity, isLocal: t.participant.isLocal })),
+    selectedScreen,
+  );
+  const focused = screenTracks.find((t) => t.participant.identity === focusedIdentity);
+  const session = useRoomSession();
+  const hostIdentity = useHostIdentity();
   const [sidebarOpen, setSidebarOpen] = useState(() => window.matchMedia?.('(min-width: 768px)').matches ?? true);
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>('participants');
 
@@ -152,6 +159,37 @@ function RoomLayout({ code, onLeave }: { code: string; onLeave: () => void }) {
     if (canShare) toast.show('O host liberou: agora você pode compartilhar a tela.', 'success');
     else toast.show('O host removeu sua permissão de compartilhar a tela.', 'info');
   }, [canShare, connected, isHost, toast]);
+
+  // Aviso ao virar host / quando outra pessoa vira host (a metadata vem do LiveKit).
+  const prevHost = useRef<string | null>(null);
+  useEffect(() => {
+    if (!connected || !hostIdentity) return;
+    const prev = prevHost.current;
+    prevHost.current = hostIdentity;
+    if (prev === null || prev === hostIdentity) return;
+    if (hostIdentity === localParticipant.identity) {
+      toast.show('Você agora é o host da sala: pode liberar telas e remover pessoas.', 'success');
+    } else {
+      const name = participants.find((p) => p.identity === hostIdentity)?.name;
+      toast.show(name ? `${name} agora é o host da sala.` : 'A sala tem um novo host.', 'info');
+    }
+  }, [connected, hostIdentity, localParticipant, participants, toast]);
+
+  // Fallback da sucessão: se o host sumiu da sala, avisa o server (que aplica a carência).
+  // Cobre o caso do webhook do LiveKit não chegar (ex: Codespaces com porta privada).
+  const hostPresent = !hostIdentity || participants.some((p) => p.identity === hostIdentity);
+  const reportedHost = useRef<string | null>(null);
+  useEffect(() => {
+    if (!connected || hostPresent || !hostIdentity || reportedHost.current === hostIdentity) return;
+    const timer = window.setTimeout(() => {
+      reportedHost.current = hostIdentity;
+      apiRequest<void>(`/api/rooms/${session.code}/host-check`, {
+        body: { identity: session.identity },
+        sessionKey: session.sessionKey,
+      }).catch((err: unknown) => console.warn('[host-check]', err));
+    }, 3000);
+    return () => window.clearTimeout(timer);
+  }, [connected, hostPresent, hostIdentity, session]);
 
   const reportShareError = useCallback(
     (err: unknown) => {
@@ -244,7 +282,7 @@ function RoomLayout({ code, onLeave }: { code: string; onLeave: () => void }) {
               <Spinner label="Conectando" /> Conectando à sala…
             </div>
           ) : (
-            <Stage focused={focused} />
+            <Stage screens={screenTracks} focused={focused} onSelect={setSelectedScreen} />
           )}
         </div>
         <Sidebar

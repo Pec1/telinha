@@ -31,6 +31,8 @@ interface RoomSnapshot {
 
 export class RoomManager {
   readonly store = new RoomStateStore();
+  /** Checagens de sucessão de host agendadas, por sala. */
+  private readonly hostChecks = new Map<string, ReturnType<typeof setTimeout>>();
 
   constructor(
     private readonly config: Config,
@@ -224,5 +226,81 @@ export class RoomManager {
         if (!isNotFoundError(err)) throw err;
       }
     }
+  }
+
+  // ---------- Sucessão de host ----------
+
+  /**
+   * O host saiu (webhook participant_left ou aviso de um cliente). Não promove na hora: um reload
+   * derruba a conexão por alguns segundos. Agenda a checagem para daqui a HOST_GRACE_SECONDS.
+   */
+  scheduleHostCheck(code: string): void {
+    if (this.hostChecks.has(code)) return;
+    const timer = setTimeout(() => {
+      this.hostChecks.delete(code);
+      this.checkHost(code).catch((err: unknown) => console.error(`[host] falha na sucessão da sala ${code}`, err));
+    }, this.config.hostGraceSeconds * 1000);
+    timer.unref?.();
+    this.hostChecks.set(code, timer);
+  }
+
+  cancelHostCheck(code: string): void {
+    const timer = this.hostChecks.get(code);
+    if (timer) clearTimeout(timer);
+    this.hostChecks.delete(code);
+  }
+
+  hasPendingHostCheck(code: string): boolean {
+    return this.hostChecks.has(code);
+  }
+
+  /**
+   * Se o host voltou (mesma identity), não faz nada. Se a sala está vazia, também não (o
+   * emptyTimeout encerra). Senão promove o participante conectado há mais tempo.
+   * Devolve a identity do novo host, se houve promoção.
+   */
+  async checkHost(code: string): Promise<string | null> {
+    const room = await this.findRoom(code);
+    if (!room) return null;
+    const participants = await this.listParticipants(code);
+    const metadata = parseRoomMetadata(room.metadata);
+    if (metadata && participants.some((p) => p.identity === metadata.hostIdentity)) return null;
+
+    const state = this.store.get(code) ?? this.store.set(code, this.rebuildState(metadata, participants));
+    const candidates = participants.filter((p) => !state.kicked.has(p.identity));
+    if (candidates.length === 0) return null;
+
+    const joinedMs = (p: ParticipantInfo) => (p.joinedAtMs > 0n ? p.joinedAtMs : p.joinedAt * 1000n);
+    const next = candidates.reduce((oldest, p) => (joinedMs(p) < joinedMs(oldest) ? p : oldest));
+
+    const newMetadata: RoomMetadata = { hostIdentity: next.identity, createdAt: metadata?.createdAt ?? this.now() };
+    // Primeiro a permissão, depois a metadata: quando os clientes virem o novo host, ele já pode transmitir.
+    await this.api.updateParticipant(code, next.identity, { permission: permissionFor(true) });
+    await this.api.updateRoomMetadata(code, serializeMetadata(newMetadata));
+    // O host não ocupa vaga de convidado.
+    state.sharers.delete(next.identity);
+    console.log(`[host] sala ${code}: ${next.identity} promovido a host`);
+    return next.identity;
+  }
+
+  /** Cliente avisou que não vê o host na sala (fallback caso o webhook não chegue). */
+  async reportHostMissing(code: string, identity: string): Promise<void> {
+    const { participants, metadata } = await this.snapshot(code);
+    if (!participants.some((p) => p.identity === identity)) throw new ApiError(403, 'UNAUTHORIZED');
+    if (metadata && participants.some((p) => p.identity === metadata.hostIdentity)) return;
+    this.scheduleHostCheck(code);
+  }
+
+  // ---------- Webhook ----------
+
+  handleParticipantLeft(code: string, identity: string, metadataRaw: string | undefined): void {
+    const hostIdentity = parseRoomMetadata(metadataRaw)?.hostIdentity;
+    // Sem metadata no evento, agenda do mesmo jeito: a checagem confere tudo no LiveKit.
+    if (!hostIdentity || hostIdentity === identity) this.scheduleHostCheck(code);
+  }
+
+  handleRoomFinished(code: string): void {
+    this.cancelHostCheck(code);
+    this.store.delete(code);
   }
 }

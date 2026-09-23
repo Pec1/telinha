@@ -29,6 +29,9 @@ export const kickRequestSchema = z.object({
 });
 export type KickRequest = z.input<typeof kickRequestSchema>;
 
+export const hostCheckRequestSchema = z.object({ identity: identitySchema });
+export type HostCheckRequest = z.input<typeof hostCheckRequestSchema>;
+
 // ---- Responses ----
 
 export interface SessionCredentials {

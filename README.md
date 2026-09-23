@@ -6,7 +6,7 @@ Compartilhamento de tela em 1080p direto no navegador. O host cria uma sala só 
 
 ```
 apps/web         React + Vite + Tailwind + livekit-client / @livekit/components-react
-apps/server      Node + Hono + livekit-server-sdk (API e, em produção, o build do web)
+apps/server      Node + Hono + livekit-server-sdk (API, webhook e, em produção, o build do web)
 packages/shared  Schemas Zod e tipos de request/response usados pelos dois apps
 ```
 
@@ -14,6 +14,7 @@ packages/shared  Schemas Zod e tipos de request/response usados pelos dois apps
 - **Identidade:** `identity = "u_" + nanoid(10)`; o apelido vai no `name`. O backend devolve um `sessionKey = HMAC-SHA256(SESSION_SECRET, código:identity)`, guardado no `sessionStorage`, que autentica as chamadas seguintes (`Authorization: Bearer`).
 - **Tokens LiveKit** duram 10 min. Quem está conectado tem o token renovado pelo próprio LiveKit; quem recarrega a página chama `/rejoin` e volta com a mesma identity e as mesmas permissões.
 - **Processo único:** o estado em memória assume uma instância do server.
+- **Sucessão de host:** quando o host sai, o server espera `HOST_GRACE_SECONDS` (um reload não conta como saída). Se ele não voltar, o participante conectado há mais tempo vira host (metadata da sala + grants de host). O aviso de saída vem do webhook do LiveKit (`participant_left`) e, como reserva, dos próprios clientes (`/host-check`) quando percebem que o host sumiu.
 
 ### API
 
@@ -25,6 +26,8 @@ packages/shared  Schemas Zod e tipos de request/response usados pelos dois apps
 | POST | `/api/rooms/:code/rejoin` | Volta `{identity, name}` + sessionKey → `{token, url}` (403 se foi removido) |
 | POST | `/api/rooms/:code/permissions` | Host concede/revoga tela `{identity, targetIdentity, canShare}` → 204 (409 `SCREEN_LIMIT`) |
 | POST | `/api/rooms/:code/kick` | Host remove alguém `{identity, targetIdentity}` → 204 |
+| POST | `/api/rooms/:code/host-check` | Participante avisa que o host sumiu `{identity}` → 204 (reserva do webhook) |
+| POST | `/api/livekit/webhook` | Eventos do LiveKit (`participant_left`, `room_finished`), assinatura validada |
 | GET | `/health` | `{ok: true}` |
 
 Erros sempre no formato `{ "error": { "code": "...", "message": "..." } }`.
@@ -36,6 +39,8 @@ Erros sempre no formato `{ "error": { "code": "...", "message": "..." } }`.
 | Nítido (padrão) | até 1920×1080 | 30 | 6 Mbps | `detail` | `balanced` |
 | Fluido | até 1920×1080 | 60 | 10 Mbps | `motion` | `maintain-framerate` |
 | Ultra | nativa da tela | 60 | 15 Mbps | `motion` | `balanced` |
+
+Com duas ou mais telas no ar aparece uma faixa de miniaturas e cada espectador escolhe a tela em destaque. Só a tela em destaque recebe vídeo (as outras ficam pausadas pelo adaptiveStream) e só o áudio dela toca.
 
 H.264 quando o navegador suporta publicar (mais chance de encoder por hardware), senão VP8; simulcast desligado. Como a tela é publicada em uma única camada, quem assiste recebe sempre a resolução cheia, independente do tamanho da janela. O modo Ultra exige upload alto e a UI avisa isso.
 
@@ -50,6 +55,8 @@ H.264 quando o navegador suporta publicar (mais chance de encoder por hardware),
 4. Abra a porta **5173 (Web)** pela aba **Ports**.
 
 > Use o LiveKit Cloud: o Codespaces não encaminha UDP, então um LiveKit local em Docker não entregaria mídia ao navegador.
+
+**Webhook no Codespaces (opcional):** o LiveKit Cloud só alcança o Codespace se a porta for pública. Sem o webhook tudo funciona, e a sucessão de host usa o aviso dos clientes. Para testar o webhook, deixe a porta 5173 pública e cadastre `https://<codespace>-5173.app.github.dev/api/livekit/webhook` no LiveKit Cloud.
 
 **Testar com outra pessoa ou outro navegador:** na aba **Ports**, clique com o botão direito na porta 5173 → **Port Visibility → Public**. Qualquer pessoa com o link `https://<codespace>-5173.app.github.dev/s/CÓDIGO` consegue entrar. Volte para **Private** quando terminar.
 
@@ -69,6 +76,7 @@ O `render.yaml` (Blueprint) define um único web service Node no plano free: o s
 1. No Render, **New → Blueprint** e selecione este repositório.
 2. O Render lê o `render.yaml` e pede os valores das variáveis marcadas com `sync: false`: `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` e `SESSION_SECRET`. Depois elas ficam em **Dashboard → telinha → Environment**.
 3. Aplique o Blueprint. O build roda `corepack enable && pnpm install --frozen-lockfile && pnpm build`, o start roda `pnpm start` e o health check é `/health`.
+4. No LiveKit Cloud, em **Settings → Webhooks**, cadastre `https://<app>.onrender.com/api/livekit/webhook` usando a mesma API key configurada no Render.
 
 ## Variáveis de ambiente
 

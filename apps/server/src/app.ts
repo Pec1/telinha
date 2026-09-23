@@ -5,6 +5,7 @@ import { onError, onNotFound } from './errors.js';
 import type { RoomManager } from './rooms.js';
 import { roomRoutes } from './routes.js';
 import { mountFrontend } from './static.js';
+import { webhookRoutes } from './webhook.js';
 
 export interface AppDeps {
   config: Config;
@@ -23,6 +24,7 @@ export function createApp({ config, rooms, webDist }: AppDeps) {
 
   const api = new Hono();
   api.route('/rooms', roomRoutes(config, rooms));
+  api.route('/livekit', webhookRoutes(config, rooms));
   app.route('/api', api);
 
   if (config.isProduction) mountFrontend(app, webDist);

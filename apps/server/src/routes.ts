@@ -1,6 +1,7 @@
 import {
   createRoomRequestSchema,
   joinRoomRequestSchema,
+  hostCheckRequestSchema,
   kickRequestSchema,
   setPermissionRequestSchema,
   rejoinRoomRequestSchema,
@@ -51,6 +52,15 @@ export function roomRoutes(config: Config, rooms: RoomManager) {
     const { identity, targetIdentity } = await readJson(c, kickRequestSchema);
     requireSession(c, config, code, identity);
     await rooms.kick(code, identity, targetIdentity);
+    return c.body(null, 204);
+  });
+
+  // Fallback da sucessão: um participante avisa que o host sumiu (caso o webhook não chegue).
+  r.post('/:code/host-check', async (c) => {
+    const code = parseParam(roomCodeSchema, c.req.param('code'));
+    const { identity } = await readJson(c, hostCheckRequestSchema);
+    requireSession(c, config, code, identity);
+    await rooms.reportHostMissing(code, identity);
     return c.body(null, 204);
   });
 
